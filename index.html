@@ -3,176 +3,192 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Metadata Remover</title>
+    <title>Image Privacy Suite | Portfolio</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.js"></script>
     <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f8fafc;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+        }
+
         body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            min-height: 100vh; 
-            margin: 0; 
-            background-color: #f0f2f5; 
+            font-family: 'Inter', 'Segoe UI', sans-serif; 
+            background-color: var(--bg);
+            color: var(--text-main);
+            display: flex; justify-content: center; align-items: center; 
+            min-height: 100vh; margin: 0; 
         }
+
         .container { 
-            background: white; 
-            padding: 40px; 
-            border-radius: 16px; 
-            box-shadow: 0 10px 25px rgba(0,0,0,0.08); 
-            width: 100%;
-            max-width: 450px; 
-            text-align: center; 
+            background: white; padding: 30px; border-radius: 20px; 
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); 
+            width: 90%; max-width: 600px; 
         }
-        h1 { font-size: 26px; color: #1a1a1a; margin-bottom: 10px; }
-        p.description { color: #666; font-size: 14px; margin-bottom: 25px; }
-        
+
+        /* Tabs Styling */
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; }
+        .tab-btn { 
+            padding: 10px 20px; cursor: pointer; border: none; background: none;
+            font-weight: 600; color: var(--text-muted); transition: 0.3s;
+            border-bottom: 3px solid transparent; margin-bottom: -2px;
+        }
+        .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        h1 { font-size: 24px; margin-bottom: 8px; text-align: center; }
+        .description { text-align: center; font-size: 14px; color: var(--text-muted); margin-bottom: 20px; }
+
+        /* UI Components */
         .drop-zone { 
-            border: 2px dashed #cbd5e0; 
-            padding: 30px; 
-            border-radius: 12px; 
-            margin-bottom: 25px; 
-            cursor: pointer; 
-            transition: all 0.3s ease;
-            background-color: #f8fafc;
+            border: 2px dashed #cbd5e0; padding: 40px; border-radius: 12px; 
+            text-align: center; cursor: pointer; transition: 0.3s; background: #fdfdfd;
         }
-        .drop-zone:hover { border-color: #3b82f6; background: #eff6ff; }
+        .drop-zone:hover { border-color: var(--primary); background: #f1f5f9; }
+
+        button.main-btn { 
+            background: var(--primary); color: white; border: none; padding: 14px;
+            border-radius: 8px; width: 100%; font-weight: 600; cursor: pointer; margin-top: 15px;
+        }
+        button.main-btn:disabled { background: #cbd5e0; cursor: not-allowed; }
+
+        /* Metadata Display */
+        #metadataDisplay { 
+            margin-top: 20px; padding: 15px; background: #1e293b; color: #34d399;
+            border-radius: 8px; font-family: monospace; font-size: 12px;
+            max-height: 300px; overflow-y: auto; text-align: left;
+        }
+        .meta-entry { display: flex; justify-content: space-between; border-bottom: 1px solid #334155; padding: 4px 0; }
         
-        #fileName { color: #475569; font-weight: 500; }
-
-        button { 
-            background-color: #2563eb; 
-            color: white; 
-            border: none; 
-            padding: 14px 28px; 
-            border-radius: 8px; 
-            cursor: pointer; 
-            font-size: 16px; 
-            font-weight: 600;
-            width: 100%; 
-            transition: background 0.2s; 
-        }
-        button:hover { background-color: #1d4ed8; }
-        button:disabled { background-color: #94a3b8; cursor: not-allowed; }
-
-        #status { 
-            margin-top: 20px; 
-            font-size: 14px; 
-            color: #4b5563; 
-            min-height: 20px;
-        }
         input[type="file"] { display: none; }
-        
-        footer { margin-top: 20px; font-size: 12px; color: #94a3b8; }
+        #status { margin-top: 15px; font-size: 13px; text-align: center; color: var(--primary); font-weight: 500; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>Metadata Remover</h1>
-    <p class="description">Upload your images to strip EXIF data and protect your privacy. All processing happens locally in your browser.</p>
-    
-    <div class="drop-zone" onclick="document.getElementById('fileInput').click()" id="dropZone">
-        <p id="fileName">Click to select or drag & drop images</p>
-        <p style="font-size: 11px; color: #94a3b8;">Supports JPG, PNG, WEBP</p>
-        <input type="file" id="fileInput" multiple accept="image/jpeg, image/png, image/webp">
+    <h1>Image Privacy Suite</h1>
+    <p class="description">Inspect or strip metadata from your photos locally.</p>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="openTab('remover')">Remover</button>
+        <button class="tab-btn" onclick="openTab('viewer')">Metadata Viewer</button>
     </div>
 
-    <button id="processBtn" disabled>Process & Download ZIP</button>
-    
-    <div id="status"></div>
+    <div id="remover" class="tab-content active">
+        <div class="drop-zone" onclick="document.getElementById('fileInputRemover').click()" id="dropZoneRemover">
+            <p><strong>Drag & Drop</strong> or click to upload</p>
+            <p style="font-size: 12px; color: var(--text-muted)">Batch process images into a ZIP</p>
+            <input type="file" id="fileInputRemover" multiple accept="image/jpeg, image/png, image/webp">
+        </div>
+        <button id="processBtn" class="main-btn" disabled>Remove Metadata & Download</button>
+    </div>
 
-    <footer>
-        Built with Privacy in Mind &bull; Browser-side Processing
-    </footer>
+    <div id="viewer" class="tab-content">
+        <div class="drop-zone" onclick="document.getElementById('fileInputViewer').click()" id="dropZoneViewer">
+            <p>Select <strong>one image</strong> to inspect</p>
+            <input type="file" id="fileInputViewer" accept="image/jpeg">
+        </div>
+        <div id="metadataDisplay">Select a JPG image to see EXIF data (GPS, Device, Date)...</div>
+    </div>
+
+    <div id="status"></div>
 </div>
 
 <script>
-    const fileInput = document.getElementById('fileInput');
+    // --- TAB SYSTEM ---
+    function openTab(tabId) {
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        event.currentTarget.classList.add('active');
+        document.getElementById('status').innerText = "";
+    }
+
+    // --- METADATA VIEWER LOGIC ---
+    const viewerInput = document.getElementById('fileInputViewer');
+    viewerInput.addEventListener('change', function() {
+        const file = this.files[0];
+        if (!file) return;
+
+        const display = document.getElementById('metadataDisplay');
+        display.innerHTML = "Reading metadata...";
+
+        EXIF.getData(file, function() {
+            const allData = EXIF.getAllTags(this);
+            if (Object.keys(allData).length === 0) {
+                display.innerHTML = "No EXIF metadata found in this image.";
+                return;
+            }
+
+            display.innerHTML = ""; // Clear
+            for (let tag in allData) {
+                if (typeof allData[tag] !== 'function' && typeof allData[tag] !== 'object') {
+                    const div = document.createElement('div');
+                    div.className = 'meta-entry';
+                    div.innerHTML = `<span>${tag}:</span> <span>${allData[tag]}</span>`;
+                    display.appendChild(div);
+                }
+            }
+        });
+    });
+
+    // --- REMOVER LOGIC (From your previous code) ---
+    const fileInputRemover = document.getElementById('fileInputRemover');
     const processBtn = document.getElementById('processBtn');
     const status = document.getElementById('status');
-    const fileNameDisplay = document.getElementById('fileName');
 
-    fileInput.addEventListener('change', () => {
-        const files = fileInput.files;
-        if (files.length > 0) {
-            fileNameDisplay.innerText = `${files.length} file(s) selected`;
+    fileInputRemover.addEventListener('change', () => {
+        if (fileInputRemover.files.length > 0) {
             processBtn.disabled = false;
+            status.innerText = `${fileInputRemover.files.length} files ready.`;
         }
     });
 
     processBtn.addEventListener('click', async () => {
-        const files = fileInput.files;
-        if (files.length === 0) return;
-
+        const files = fileInputRemover.files;
         processBtn.disabled = true;
         processBtn.innerText = "Processing...";
         const zip = new JSZip();
-        
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            status.innerText = `Cleaning: ${file.name}...`;
 
-            try {
-                // Remove metadata by drawing the image onto a Canvas
-                const cleanedBlob = await removeMetadata(file);
-                zip.file(`clean_${file.name}`, cleanedBlob);
-            } catch (e) {
-                console.error(`Error processing ${file.name}:`, e);
-            }
+        for (let file of files) {
+            status.innerText = `Cleaning: ${file.name}`;
+            const cleanBlob = await removeMetadata(file);
+            zip.file(`clean_${file.name}`, cleanBlob);
         }
 
-        status.innerText = "Generating ZIP file...";
         const content = await zip.generateAsync({ type: "blob" });
-        
-        // Trigger download
         const link = document.createElement("a");
         link.href = URL.createObjectURL(content);
-        link.download = "cleansed_images.zip";
+        link.download = "cleansed_photos.zip";
         link.click();
 
-        status.innerText = "Success! Metadata has been removed.";
+        status.innerText = "Done! Metadata removed successfully.";
         processBtn.disabled = false;
-        processBtn.innerText = "Process & Download ZIP";
+        processBtn.innerText = "Remove Metadata & Download";
     });
 
-    /**
-     * core Logic: Drawing an image to a Canvas and exporting it back 
-     * strips all EXIF/metadata because Canvas only stores pixel data.
-     */
     function removeMetadata(file) {
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
             const reader = new FileReader();
             reader.readAsDataURL(file);
-            reader.onload = (event) => {
+            reader.onload = (e) => {
                 const img = new Image();
-                img.src = event.target.result;
+                img.src = e.target.result;
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
                     canvas.width = img.width;
                     canvas.height = img.height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0);
-                    
-                    canvas.toBlob((blob) => {
-                        resolve(blob);
-                    }, file.type, 0.92); 
+                    canvas.getContext('2d').drawImage(img, 0, 0);
+                    canvas.toBlob((blob) => resolve(blob), file.type, 0.92);
                 };
             };
-            reader.onerror = reject;
         });
     }
-
-    // Basic Drag & Drop functionality
-    const dropZone = document.getElementById('dropZone');
-    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = '#2563eb'; });
-    dropZone.addEventListener('dragleave', () => { dropZone.style.borderColor = '#cbd5e0'; });
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.style.borderColor = '#cbd5e0';
-        fileInput.files = e.dataTransfer.files;
-        fileInput.dispatchEvent(new Event('change'));
-    });
 </script>
 
 </body>
