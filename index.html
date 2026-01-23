@@ -12,6 +12,7 @@
             --bg: #f8fafc;
             --text-main: #1e293b;
             --ai-accent: #a855f7;
+            --ai-text-highlight: #34d399;
             --console-bg: #0f172a;
         }
 
@@ -28,13 +29,16 @@
         .drop-zone:hover { border-color: var(--primary); background: #f1f5f9; }
         
         #metadataDisplay { 
-            margin-top: 20px; padding: 20px; background: var(--console-bg); color: #34d399;
+            margin-top: 20px; padding: 20px; background: var(--console-bg); color: #e2e8f0;
             border-radius: 12px; font-family: 'Fira Code', monospace; font-size: 13px;
             max-height: 600px; overflow-y: auto;
         }
 
-        .ai-box { border: 1px solid var(--ai-accent); padding: 15px; border-radius: 8px; margin-bottom: 15px; background: #1e1b4b; color: #e9d5ff; }
-        .copy-btn { background: var(--ai-accent); border: none; color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; float: right; font-size: 11px; font-weight: bold; }
+        .ai-box { border: 1px solid var(--ai-accent); padding: 15px; border-radius: 8px; margin-bottom: 15px; background: #1e1b4b; color: #e9d5ff; position: relative; }
+        .ai-box.highlight { border-color: var(--ai-text-highlight); background: #064e3b; color: #ecfdf5; }
+        
+        .copy-btn { background: var(--ai-accent); border: none; color: white; padding: 6px 12px; border-radius: 4px; cursor: pointer; float: right; font-size: 11px; font-weight: bold; margin-bottom: 5px; }
+        .ai-box.highlight .copy-btn { background: var(--ai-text-highlight); color: #064e3b; }
         
         .meta-header { color: #f8fafc; font-weight: bold; margin: 20px 0 8px; border-bottom: 1px solid #334155; display: flex; align-items: center; gap: 8px; }
         .meta-entry { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dotted #1e293b; }
@@ -77,7 +81,7 @@
     <div id="status" style="text-align:center; margin-top:15px; font-weight:bold; color: var(--primary);"></div>
     
     <footer>
-        Created by  &bull; Isaac-maker
+        Created by &bull; Isaac-maker
     </footer>
 </div>
 
@@ -97,14 +101,11 @@
         const display = document.getElementById('metadataDisplay');
         display.innerHTML = "Processing data...";
 
-        // Initial HTML with File System Data
         let html = `<div class="meta-header">📂 FILE SYSTEM INFO</div>`;
         html += `<div class="meta-entry"><span>Filename:</span><span>${file.name}</span></div>`;
         html += `<div class="meta-entry"><span>Size:</span><span>${(file.size / 1024).toFixed(2)} KB</span></div>`;
         html += `<div class="meta-entry"><span>Type:</span><span>${file.type}</span></div>`;
-        html += `<div class="meta-entry"><span>Last Modified:</span><span>${new Date(file.lastModified).toLocaleString()}</span></div>`;
 
-        // Get Dimensions (Width/Height)
         const imgDimensions = await new Promise((resolve) => {
             const img = new Image();
             img.onload = () => resolve({ w: img.width, h: img.height });
@@ -114,16 +115,26 @@
         html += `<div class="meta-header">📏 IMAGE DIMENSIONS</div>`;
         html += `<div class="meta-entry"><span>Width:</span><span>${imgDimensions.w} px</span></div>`;
         html += `<div class="meta-entry"><span>Height:</span><span>${imgDimensions.h} px</span></div>`;
-        html += `<div class="meta-entry"><span>Aspect Ratio:</span><span>${(imgDimensions.w / imgDimensions.h).toFixed(2)}:1</span></div>`;
 
-        // AI Data (Prompt/Workflow)
+        // AI Data Extraction
         const aiData = await readAIPrompts(file);
+        
+        // SECCIÓN ESPECÍFICA PARA "TEXT"
+        if (aiData.extractedText) {
+            html += `<div class="meta-header">🎯 PRIMARY PROMPT (TEXT)</div>`;
+            html += `<div class="ai-box highlight">
+                <button class="copy-btn" onclick="copyTextById('primaryText')">Copy Text</button>
+                <div id="primaryText" style="white-space: pre-wrap; word-break: break-all; font-size:14px;">${aiData.extractedText}</div>
+            </div>`;
+        }
+
+        // SECCIÓN GENERAL DE PARÁMETROS
         if (aiData.prompt || aiData.workflow || aiData.parameters) {
             html += `<div class="meta-header">🤖 AI GENERATION PARAMETERS</div>`;
             const mainPrompt = aiData.prompt || aiData.parameters || aiData.workflow;
             html += `<div class="ai-box">
-                <button class="copy-btn" onclick="copyToClipboard()">Copy Prompt</button>
-                <div id="promptText" style="white-space: pre-wrap; word-break: break-all; font-size:12px;">${mainPrompt}</div>
+                <button class="copy-btn" onclick="copyTextById('fullPrompt')">Copy All</button>
+                <div id="fullPrompt" style="white-space: pre-wrap; word-break: break-all; font-size:12px;">${mainPrompt}</div>
             </div>`;
         }
 
@@ -145,7 +156,7 @@
     async function readAIPrompts(file) {
         const buffer = await file.arrayBuffer();
         const view = new DataView(buffer);
-        let results = {};
+        let results = { extractedText: null };
 
         if (file.type === "image/png") {
             let offset = 8;
@@ -154,9 +165,29 @@
                 const type = String.fromCharCode(...new Uint8Array(buffer, offset + 4, 4));
                 if (type === 'tEXt' || type === 'iTXt') {
                     const chunkData = new Uint8Array(buffer, offset + 8, length);
-                    const text = new TextDecoder().decode(chunkData);
-                    const [key, ...val] = text.split('\0');
-                    results[key.toLowerCase()] = val.join('\0');
+                    const decoded = new TextDecoder().decode(chunkData);
+                    const parts = decoded.split('\0');
+                    
+                    // En PNG, la estructura suele ser Key\0Value o Key\0Flags...\0Value
+                    const key = parts[0].toLowerCase();
+                    let value = (type === 'iTXt') ? parts.slice(3).join('\0') : parts.slice(1).join('\0');
+
+                    results[key] = value;
+
+                    // Intentar buscar "text" dentro de posibles JSON (ComfyUI / Automatic1111)
+                    try {
+                        const json = JSON.parse(value);
+                        // Buscar recursivamente o en lugares comunes
+                        if (json.text) results.extractedText = json.text;
+                        for (let k in json) {
+                            if (json[k].inputs && json[k].inputs.text) {
+                                results.extractedText = json[k].inputs.text;
+                            }
+                        }
+                    } catch(e) {}
+                    
+                    // Si la llave es literalmente "text"
+                    if (key === 'text') results.extractedText = value;
                 }
                 offset += length + 12;
                 if (type === 'IEND') break;
@@ -165,10 +196,10 @@
         return results;
     }
 
-    function copyToClipboard() {
-        const text = document.getElementById('promptText').innerText;
+    function copyTextById(id) {
+        const text = document.getElementById(id).innerText;
         navigator.clipboard.writeText(text);
-        alert("Prompt copied!");
+        alert("Copied to clipboard!");
     }
 
     // REMOVER LOGIC
